@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  --font-orbitron: "Orbitron", sans-serif;
+  --font-bengali: "Noto Sans Bengali", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --font-sans: "Inter", sans-serif;
+
+  --color-navy-900: #0a0f1e;
+  --color-navy-800: #121a2e;
+  --color-teal-accent: #00d4aa;
+  --color-amber-warning: #ffb347;
+  --color-danger-red: #ff4757;
+  --color-soft-white: #e8edf5;
+}
+
+@layer base {
+  body {
+    @apply bg-navy-900 text-soft-white font-sans selection:bg-teal-accent selection:text-navy-900;
+    background-image: 
+      radial-gradient(circle at 2px 2px, rgba(0, 212, 170, 0.05) 1px, transparent 0);
+    background-size: 40px 40px;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { text-shadow: 0 0 10px currentColor; opacity: 1; }
+  50% { text-shadow: 0 0 25px currentColor; opacity: 0.8; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+.glass-card {
+  @apply bg-navy-800/50 border border-white/10 backdrop-blur-md rounded-2xl;
+}
+
+.bengali-text {
+  font-family: var(--font-bengali);
+}
+
+.orbitron {
+  font-family: var(--font-orbitron);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-navy-900;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-teal-accent/20 rounded-full hover:bg-teal-accent/40 transition-colors;
+}
