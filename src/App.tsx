@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GoogleGenAI } from "@google/genai";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { 
@@ -35,6 +34,21 @@ import { motion, AnimatePresence } from 'motion/react';
 
 // --- Constants & Data ---
 
+const SYSTEM_PROMPT = `You are an expert SSC exam tutor for Bangladesh, specifically trained for the SSC 2026 batch. You help students with preparation strategies, subject-specific queries, and motivation.
+Subjects you cover: Bangla 1st & 2nd, English 1st & 2nd, Mathematics (General & Higher), Physics, Chemistry, Biology, ICT, BGS, and Religion.
+Key focus areas for SSC 2026:
+- Short syllabus for regular students, full for irregular.
+- New pattern in Bangla 2nd (Report writing instead of Translation).
+- July Revolution 2024 topics in BGS and English.
+- Practical exams in June 2026.
+Guidelines:
+- Provide concise, actionable study tips.
+- For Math, provide step-by-step clear solutions.
+- Use Bengali when the user asks in Bengali, English otherwise.
+- Be extremely encouraging and motivating (use 'ইনশাআল্লাহ তুমি পারবে!').
+- Keep responses under 200 words unless explaining a complex topic.
+- Mention specific chapters or topics from the 2026 syllabus when relevant.`;
+
 const EXAM_SCHEDULE = [
   { id: 'b1', nameEn: 'Bangla 1st Paper', nameBn: 'বাংলা ১ম পত্র', date: '2026-04-21T10:00:00+06:00', group: 'All', icon: '📖' },
   { id: 'b2', nameEn: 'Bangla 2nd Paper', nameBn: 'বাংলা ২য় পত্র', date: '2026-04-22T10:00:00+06:00', group: 'All', icon: '📝' },
@@ -59,21 +73,25 @@ const EXAM_SCHEDULE = [
 ];
 
 const MCQ_TARGETS = [
-  { subject: 'Bangla', target: 200, icon: '📝' },
-  { subject: 'English', target: 200, icon: '🔤' },
+  { subject: 'Bangla 1st', target: 200, icon: '📖' },
+  { subject: 'Bangla 2nd', target: 200, icon: '📝' },
+  { subject: 'English 1st', target: 200, icon: '🔤' },
+  { subject: 'English 2nd', target: 200, icon: '✍️' },
   { subject: 'Mathematics', target: 300, icon: '🔢' },
   { subject: 'Physics', target: 200, icon: '⚛️' },
   { subject: 'Chemistry', target: 200, icon: '🧪' },
   { subject: 'Biology', target: 200, icon: '🧬' },
   { subject: 'ICT', target: 150, icon: '💻' },
   { subject: 'BGS', target: 200, icon: '🌍' },
+  { subject: 'Religion', target: 200, icon: '🕌' },
 ];
 
 const MOTIVATIONAL_QUOTES = [
   "মানুষ যা চায়, সে তাই পায়। তুমি A+ চাইলে A+ পাবে।",
   "প্রতিদিনের ছোট উন্নতিই বড় সাফল্যের পথ।",
   "ইনশাআল্লাহ, তুমি পারবে।",
-  "তোমার বাবা-মার স্বপ্ন পূরণ করার সময় এখন।"
+  "তোমার বাবা-মার স্বপ্ন পূরণ করার সময় এখন।",
+  "সাফল্য মানেই শেষ নয়, ব্যর্থতা মানেই মৃত্যু নয়; আসল হলো এগিয়ে যাওয়ার সাহস।"
 ];
 
 const HEALTH_REMINDERS = [
@@ -85,40 +103,82 @@ const HEALTH_REMINDERS = [
   { icon: <Calendar className="w-5 h-5" />, text: "Eid break: Only 3 slots — Eve, Day, Night" }
 ];
 
-const STRATEGY_DATA: Record<string, { tips: string[] }> = {
-  "Bangla": {
+const STRATEGY_DATA: Record<string, { titleBn: string, warning?: string, window?: string, shortcut?: string, tips: string[] }> = {
+  "Bangla 2nd": {
+    titleBn: "বাংলা ২য় পত্র Strategy",
+    warning: "Only 1 rest day before exam — prepare it BEFORE Bangla 1st Paper exam",
+    window: "Study during April 10-13 (before 1st paper exam)",
+    shortcut: "Use the 3-hour grammar shortcut class to score 30/30 in grammar",
     tips: [
-      "গদ্য ও পদ্যের মূলভাব ভালো করে পড়ো।",
-      "সৃজনশীল প্রশ্নের ক ও খ অংশের জন্য জ্ঞানমূলক ও অনুধাবনমূলক প্রশ্নগুলো মুখস্থ করো।",
-      "MCQ এর জন্য পাঠ্যবইয়ের প্রতিটি লাইন গুরুত্বপূর্ণ।"
+      "Verb rules, sentence correction, composition",
+      "সংবাদ প্রতিবেদন (Report Writing) ফরম্যাট ভালো করে দেখে নাও।",
+      "রচনা হিসেবে 'জুলাই বিপ্লব ২০২৪' অত্যন্ত গুরুত্বপূর্ণ।"
     ]
   },
   "English": {
+    titleBn: "English Strategy",
     tips: [
       "Practice grammar rules daily.",
       "Focus on writing sections (Paragraph, Letter, Composition).",
+      "Paragraph: July Revolution 2024, Antidiscrimination Movement.",
       "Read comprehension passages carefully before answering."
     ]
   },
-  "Mathematics": {
+  "Gen. Math": {
+    titleBn: "সাধারণ গণিত Strategy",
     tips: [
-      "সূত্রগুলো ভালো করে আয়ত্ত করো।",
-      "প্রতিদিন অন্তত ২টি করে সৃজনশীল প্রশ্ন সমাধান করো।",
-      "জ্যামিতির উপপাদ্য ও সম্পাদ্যগুলো বারবার আঁকো।"
+      "4 sections (ক,খ,গ,ঘ) — answer 1 from each + 1 extra",
+      "পরিসংখ্যান (Statistics) থেকে ৩০ নম্বর নিশ্চিত করো।",
+      "জ্যামিতির উপপাদ্য ও সম্পাদ্যগুলো বারবার আঁকো।",
+      "MCQ এর জন্য ক্যালকুলেটর ট্রিকস শেখো।"
     ]
   },
-  "Science": {
+  "Higher Math": {
+    titleBn: "উচ্চতর গণিত Strategy",
     tips: [
-      "চিত্রগুলো পরিষ্কার করে আঁকার অভ্যাস করো।",
-      "গাণিতিক সমস্যাগুলো নিয়মিত প্র্যাকটিস করো।",
-      "গুরুত্বপূর্ণ সংজ্ঞা ও বৈশিষ্ট্যগুলো নোট করে রাখো।"
+      "বীজগণিতীয় রাশি ও সেট-ফাংশন থেকে প্রশ্ন কমন পড়বেই।",
+      "ত্রিকোণমিতি ও স্থানাঙ্ক জ্যামিতি ভালো করে প্র্যাকটিস করো।",
+      "ক্যালকুলেটর ব্যবহার করে দ্রুত সমাধান করার চেষ্টা করো।"
+    ]
+  },
+  "Physics": {
+    titleBn: "পদার্থবিজ্ঞান Strategy",
+    tips: [
+      "গতি ও বল অধ্যায় থেকে গাণিতিক সমস্যা বেশি আসে।",
+      "কাজের ক্ষমতা ও শক্তি এবং চাপের গাণিতিক সূত্রগুলো মুখস্থ করো।",
+      "চিত্রসহ ব্যাখ্যাগুলো ভালো করে আয়ত্ত করো।"
+    ]
+  },
+  "Chemistry": {
+    titleBn: "রসায়ন Strategy",
+    tips: [
+      "পর্যায় সারণি ও রাসায়নিক বন্ধন থেকে প্রশ্ন আসবেই।",
+      "মোল ও রাসায়নিক গণনা অধ্যায়টি খুব গুরুত্বপূর্ণ।",
+      "জৈব রসায়ন (Organic Chemistry) বাদ দিও না।"
+    ]
+  },
+  "Biology": {
+    titleBn: "জীববিজ্ঞান Strategy",
+    tips: [
+      "কোষ ও টিস্যু এবং ডিএনএ-আরএনএ চিত্রসহ পড়ো।",
+      "হৃৎপিণ্ড ও বৃক্কের চিত্র আঁকা প্র্যাকটিস করো।",
+      "সালোকসংশ্লেষণ ও শ্বসন প্রক্রিয়াগুলো ভালো করে বোঝো।"
+    ]
+  },
+  "BGS": {
+    titleBn: "বাংলাদেশ ও বিশ্বপরিচয় Strategy",
+    tips: [
+      "মুক্তিযুদ্ধ ও সংবিধান অধ্যায় থেকে বড় প্রশ্ন আসবে।",
+      "জুলাই বিপ্লব ২০২৪ সম্পর্কিত তথ্যগুলো জেনে রাখো।",
+      "MCQ এর জন্য সাল ও নামগুলো নোট করো।"
     ]
   },
   "ICT": {
+    titleBn: "ICT Strategy",
     tips: [
-      "বইয়ের প্রতিটি অধ্যায়ের গুরুত্বপূর্ণ পয়েন্টগুলো আন্ডারলাইন করে পড়ো।",
-      "প্রোগ্রামিং ও এইচটিএমএল কোডগুলো প্র্যাকটিস করো।",
-      "MCQ এর জন্য বিগত বছরের প্রশ্নগুলো সমাধান করো।"
+      "বাইনারি ও ডেসিমাল কনভার্সন প্র্যাকটিস করো।",
+      "এইচটিএমএল ও এক্সেল এর বেসিকগুলো জেনে রাখো।",
+      "বইয়ের প্রতিটি অধ্যায়ের গুরুত্বপূর্ণ পয়েন্টগুলো পড়ো।"
     ]
   }
 };
@@ -523,44 +583,103 @@ const MarkDistributionTable = () => {
 };
 
 const APlusCalculator = () => {
-  const [mcq, setMcq] = useState(25);
-  const [cq, setCq] = useState(55);
-  const total = mcq + cq;
-  const needed = Math.max(0, 80 - total);
+  const [scores, setScores] = useState<Record<string, { mcq: number, cq: number, prac: number }>>(() => {
+    const saved = localStorage.getItem('ssc_aplus_scores');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const subjects = [
+    { id: 'b1', name: 'Bangla 1st', mcqMax: 30, cqMax: 70, pracMax: 0 },
+    { id: 'b2', name: 'Bangla 2nd', mcqMax: 30, cqMax: 70, pracMax: 0 },
+    { id: 'e1', name: 'English 1st', mcqMax: 30, cqMax: 70, pracMax: 0 },
+    { id: 'e2', name: 'English 2nd', mcqMax: 30, cqMax: 70, pracMax: 0 },
+    { id: 'math', name: 'Gen. Math', mcqMax: 30, cqMax: 70, pracMax: 0 },
+    { id: 'phys', name: 'Physics', mcqMax: 25, cqMax: 50, pracMax: 25 },
+    { id: 'chem', name: 'Chemistry', mcqMax: 25, cqMax: 50, pracMax: 25 },
+    { id: 'bio', name: 'Biology', mcqMax: 25, cqMax: 50, pracMax: 25 },
+    { id: 'hmath', name: 'Higher Math', mcqMax: 25, cqMax: 50, pracMax: 25 },
+    { id: 'bgs', name: 'BGS', mcqMax: 30, cqMax: 70, pracMax: 0 },
+    { id: 'rel', name: 'Religion', mcqMax: 30, cqMax: 70, pracMax: 0 },
+  ];
+
+  const updateScore = (id: string, field: 'mcq' | 'cq' | 'prac', val: number) => {
+    const newScores = {
+      ...scores,
+      [id]: {
+        ...(scores[id] || { mcq: 0, cq: 0, prac: 0 }),
+        [field]: val
+      }
+    };
+    setScores(newScores);
+    localStorage.setItem('ssc_aplus_scores', JSON.stringify(newScores));
+  };
 
   return (
-    <div className="glass-card p-6 space-y-4">
-      <h3 className="orbitron text-sm font-bold text-teal-accent flex items-center gap-2">
-        <Calculator className="w-4 h-4" /> A+ CALCULATION HELPER
-      </h3>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="text-[10px] uppercase opacity-50 font-mono">Expected MCQ</label>
-          <input 
-            type="number" 
-            value={mcq} 
-            onChange={(e) => setMcq(Number(e.target.value))}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal-accent"
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] uppercase opacity-50 font-mono">Expected CQ</label>
-          <input 
-            type="number" 
-            value={cq} 
-            onChange={(e) => setCq(Number(e.target.value))}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal-accent"
-          />
-        </div>
+    <div className="glass-card p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="orbitron text-sm font-bold text-teal-accent flex items-center gap-2">
+          <Calculator className="w-4 h-4" /> A+ CALCULATION HELPER
+        </h3>
+        <p className="text-[10px] font-mono opacity-50">A+ = 80+ MARKS</p>
       </div>
-      <div className="p-4 bg-navy-900/50 rounded-xl border border-white/5 flex justify-between items-center">
-        <div>
-          <p className="text-2xl font-bold orbitron">{total} / 100</p>
-          <p className="text-[10px] uppercase opacity-50 font-mono">{total >= 80 ? 'A+ ACHIEVED ✓' : `NEED ${needed} MORE FOR A+`}</p>
-        </div>
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold orbitron text-lg ${total >= 80 ? 'bg-teal-accent text-navy-900 shadow-[0_0_15px_rgba(0,212,170,0.4)]' : 'bg-danger-red/20 text-danger-red border border-danger-red/30'}`}>
-          {total >= 80 ? 'A+' : 'F'}
-        </div>
+      
+      <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+        {subjects.map((sub) => {
+          const current = scores[sub.id] || { mcq: 0, cq: 0, prac: 0 };
+          const total = current.mcq + current.cq + current.prac;
+          const needed = Math.max(0, 80 - total);
+          const isAPlus = total >= 80;
+
+          return (
+            <div key={sub.id} className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold">{sub.name}</span>
+                <span className={`text-xs font-mono font-bold ${isAPlus ? 'text-teal-accent' : 'text-danger-red'}`}>
+                  {isAPlus ? 'A+ ACHIEVED ✓' : `${needed} MORE NEEDED`}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[8px] uppercase opacity-40 font-mono">MCQ / {sub.mcqMax}</label>
+                  <input 
+                    type="number" 
+                    value={current.mcq}
+                    onChange={(e) => updateScore(sub.id, 'mcq', Number(e.target.value))}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-teal-accent"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[8px] uppercase opacity-40 font-mono">CQ / {sub.cqMax}</label>
+                  <input 
+                    type="number" 
+                    value={current.cq}
+                    onChange={(e) => updateScore(sub.id, 'cq', Number(e.target.value))}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-teal-accent"
+                  />
+                </div>
+                {sub.pracMax > 0 && (
+                  <div className="space-y-1">
+                    <label className="text-[8px] uppercase opacity-40 font-mono">Prac / {sub.pracMax}</label>
+                    <input 
+                      type="number" 
+                      value={current.prac}
+                      onChange={(e) => updateScore(sub.id, 'prac', Number(e.target.value))}
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-teal-accent"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                <span className="text-[10px] font-mono opacity-50">TOTAL: {total} / 100</span>
+                <div className={`px-2 py-0.5 rounded text-[10px] font-bold orbitron ${isAPlus ? 'bg-teal-accent text-navy-900' : 'bg-danger-red/20 text-danger-red'}`}>
+                  {isAPlus ? 'A+' : 'F'}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
       <p className="text-[10px] opacity-40 italic text-center">"MCQ 25/30 + CQ 55/70 = 80 = A+ ✓"</p>
     </div>
@@ -630,6 +749,85 @@ const RevisionMatrix = () => (
     </div>
   </div>
 );
+
+const StrategyGuide = () => {
+  const [activeTab, setActiveTab] = useState("Bangla 2nd");
+
+  return (
+    <div className="space-y-6">
+      <h2 className="orbitron text-2xl font-bold flex items-center gap-3">
+        <BookOpen className="text-teal-accent" /> STRATEGY GUIDE
+      </h2>
+      <div className="glass-card overflow-hidden">
+        <div className="flex overflow-x-auto border-b border-white/10 bg-white/5 custom-scrollbar">
+          {Object.keys(STRATEGY_DATA).map((sub) => (
+            <button
+              key={sub}
+              onClick={() => setActiveTab(sub)}
+              className={`px-6 py-4 text-xs font-mono whitespace-nowrap transition-all border-r border-white/10 last:border-r-0 ${activeTab === sub ? 'bg-teal-accent text-navy-900 font-bold' : 'opacity-50 hover:opacity-100 hover:bg-white/5'}`}
+            >
+              {sub}
+            </button>
+          ))}
+        </div>
+        <div className="p-6 min-h-[300px] space-y-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-teal-accent">{activeTab} Strategy</h3>
+                  <p className="bengali-text text-sm opacity-60">{STRATEGY_DATA[activeTab].titleBn}</p>
+                </div>
+                {STRATEGY_DATA[activeTab].warning && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-danger-red/10 border border-danger-red/30 rounded-lg text-danger-red text-[10px] font-bold uppercase">
+                    <AlertTriangle className="w-3 h-3" /> {STRATEGY_DATA[activeTab].warning}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  {STRATEGY_DATA[activeTab].window && (
+                    <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                      <p className="text-[10px] font-mono text-teal-accent uppercase mb-1 flex items-center gap-2"><Calendar className="w-3 h-3" /> Study Window</p>
+                      <p className="text-sm">{STRATEGY_DATA[activeTab].window}</p>
+                    </div>
+                  )}
+                  {STRATEGY_DATA[activeTab].shortcut && (
+                    <div className="p-4 bg-amber-warning/10 rounded-xl border border-amber-warning/30">
+                      <p className="text-[10px] font-mono text-amber-warning uppercase mb-1 flex items-center gap-2"><Zap className="w-3 h-3" /> Grammar Shortcut</p>
+                      <p className="text-sm bengali-text">{STRATEGY_DATA[activeTab].shortcut}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-xs font-mono text-teal-accent uppercase tracking-widest flex items-center gap-2">
+                    <CheckCircle2 className="w-3 h-3" /> Focus Areas & Tips
+                  </h4>
+                  <ul className="space-y-3">
+                    {STRATEGY_DATA[activeTab].tips.map((tip, i) => (
+                      <li key={i} className="flex gap-3 text-sm opacity-80 leading-relaxed">
+                        <span className="text-teal-accent mt-1">•</span>
+                        <span className="bengali-text">{tip}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const [completedExams, setCompletedExams] = useState<string[]>(() => {
@@ -792,30 +990,20 @@ export default function App() {
     setIsTyping(true);
 
     try {
-      // 1. Try Ollama Proxy (Backend)
-      try {
-        const response = await axios.post('/api/chat', {
-          prompt: `System: You are an expert SSC exam tutor for Bangladesh. You help students with SSC 2026 preparation. You know all subjects: Bangla, English, Mathematics (General & Higher), Physics, Chemistry, Biology, ICT, BGS, and Religion. Give concise, practical study tips. When asked about Math, give step-by-step solutions. Respond in Bengali when the student writes in Bengali, in English when they write in English. Be encouraging and motivating. Keep responses under 150 words unless explaining a complex math problem. Always end with 'ইনশাআল্লাহ তুমি পারবে!'\n\nUser: ${chatInput}`,
-        });
-        
-        if (response.data.response) {
-          setChatMessages(prev => [...prev, { role: 'ai', text: response.data.response }]);
-          setIsTyping(false);
-          return;
-        }
-      } catch (ollamaErr) {
-        console.warn("Ollama failed, falling back to Gemini:", ollamaErr);
-      }
-
-      // 2. Fallback to Gemini (Frontend)
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const model = ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `System: You are an expert SSC exam tutor for Bangladesh. You help students with SSC 2026 preparation. You know all subjects: Bangla, English, Mathematics (General & Higher), Physics, Chemistry, Biology, ICT, BGS, and Religion. Give concise, practical study tips. When asked about Math, give step-by-step solutions. Respond in Bengali when the student writes in Bengali, in English when they write in English. Be encouraging and motivating. Keep responses under 150 words unless explaining a complex math problem. Always end with 'ইনশাআল্লাহ তুমি পারবে!'\n\nUser: ${chatInput}`,
+      const response = await axios.post('/api/groq', {
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          ...chatMessages.map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text })),
+          { role: 'user', content: chatInput }
+        ],
+        model: "llama-3.3-70b-versatile"
       });
-
-      const result = await model;
-      setChatMessages(prev => [...prev, { role: 'ai', text: result.text || "I'm sorry, I couldn't generate a response. ইনশাআল্লাহ তুমি পারবে!" }]);
+      
+      if (response.data.choices?.[0]?.message?.content) {
+        setChatMessages(prev => [...prev, { role: 'ai', text: response.data.choices[0].message.content }]);
+      } else {
+        throw new Error("Invalid response from Groq");
+      }
     } catch (err) {
       console.error("AI Error:", err);
       setChatMessages(prev => [...prev, { role: 'ai', text: "AI সংযোগে সমস্যা হচ্ছে — নিজেই পড়ো! 💪 ইনশাআল্লাহ তুমি পারবে!" }]);
@@ -961,44 +1149,7 @@ export default function App() {
         {/* Section 4: Strategy Guide */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
-            <div className="space-y-6">
-              <h2 className="orbitron text-2xl font-bold flex items-center gap-3">
-                <BookOpen className="text-teal-accent" /> STRATEGY GUIDE
-              </h2>
-              <div className="glass-card overflow-hidden">
-                <div className="flex overflow-x-auto border-b border-white/10 bg-white/5">
-                  {Object.keys(STRATEGY_DATA).map((sub) => (
-                    <button
-                      key={sub}
-                      className="px-6 py-4 text-sm font-mono whitespace-nowrap hover:bg-white/5 transition-colors border-r border-white/10 last:border-r-0"
-                      onClick={() => {
-                        const el = document.getElementById(`strategy-${sub}`);
-                        el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                      }}
-                    >
-                      {sub}
-                    </button>
-                  ))}
-                </div>
-                <div className="p-6 h-96 overflow-y-auto space-y-12 scroll-smooth">
-                  {Object.entries(STRATEGY_DATA).map(([sub, data]) => (
-                    <div key={sub} id={`strategy-${sub}`} className="space-y-4">
-                      <h3 className="text-xl font-bold text-teal-accent flex items-center gap-2">
-                        <ChevronRight className="w-5 h-5" /> {sub}
-                      </h3>
-                      <ul className="space-y-3">
-                        {data.tips.map((tip, i) => (
-                          <li key={i} className="flex gap-3 text-sm opacity-80 leading-relaxed">
-                            <span className="text-teal-accent mt-1">•</span>
-                            <span className={tip.includes('(') ? 'bengali-text' : ''}>{tip}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <StrategyGuide />
 
             <div className="space-y-6">
               <h2 className="orbitron text-2xl font-bold flex items-center gap-3">
@@ -1068,32 +1219,38 @@ export default function App() {
               <Zap className="text-teal-accent" /> MCQ TRACKER
             </h2>
             <div className="glass-card p-6 space-y-6">
-              {['General Math', 'Physics', 'Chemistry', 'Biology', 'BGS'].map(sub => {
-                const count = mcqCounts[sub] || 0;
-                const progress = Math.min((count / 200) * 100, 100);
+              {MCQ_TARGETS.map(target => {
+                const count = mcqCounts[target.subject] || 0;
+                const progress = Math.min((count / target.target) * 100, 100);
                 return (
-                  <div key={sub} className="space-y-2">
+                  <div key={target.subject} className="space-y-2">
                     <div className="flex justify-between text-xs font-mono">
-                      <span className="opacity-70">{sub}</span>
-                      <span className="text-teal-accent">{count} / 200</span>
+                      <span className="flex items-center gap-2 opacity-70">{target.icon} {target.subject}</span>
+                      <span className="text-teal-accent">{count} / {target.target}</span>
                     </div>
                     <div className="h-2 bg-white/5 rounded-full overflow-hidden">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ width: `${progress}%` }}
-                        className={`h-full ${progress >= 100 ? 'bg-teal-accent' : progress >= 50 ? 'bg-amber-warning' : 'bg-danger-red'}`}
+                        className={`h-full ${progress >= 100 ? 'bg-teal-accent shadow-[0_0_10px_rgba(0,212,170,0.5)]' : progress >= 50 ? 'bg-amber-warning' : 'bg-danger-red'}`}
                       />
                     </div>
                     <div className="flex gap-2">
                       {[10, 25, 50].map(val => (
                         <button 
                           key={val}
-                          onClick={() => updateMcq(sub, val)}
+                          onClick={() => updateMcq(target.subject, val)}
                           className="flex-1 py-1 text-[10px] font-mono border border-white/10 rounded hover:bg-white/5 transition-colors"
                         >
                           +{val}
                         </button>
                       ))}
+                      <button 
+                        onClick={() => updateMcq(target.subject, -10)}
+                        className="px-2 py-1 text-[10px] font-mono border border-white/10 rounded hover:bg-danger-red/20 transition-colors"
+                      >
+                        -
+                      </button>
                     </div>
                   </div>
                 );
@@ -1213,7 +1370,7 @@ export default function App() {
               <div className="p-4 bg-teal-accent text-navy-900 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4" />
-                  <span className="orbitron font-bold text-xs uppercase tracking-widest">AI Study Assistant</span>
+                  <span className="orbitron font-bold text-xs uppercase tracking-widest">AI Study Assistant (Groq)</span>
                 </div>
                 <button onClick={() => setChatOpen(false)}><X className="w-5 h-5" /></button>
               </div>
@@ -1285,6 +1442,20 @@ export default function App() {
         }
         .animate-marquee:hover {
           animation-play-state: paused;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+          height: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(0, 212, 170, 0.3);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(0, 212, 170, 0.5);
         }
       `}</style>
     </div>

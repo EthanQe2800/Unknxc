@@ -12,34 +12,35 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Ollama Proxy Endpoint
-  app.post("/api/chat", async (req, res) => {
-    const { prompt } = req.body;
-    const ollamaUrl = process.env.OLLAMA_API_URL || "http://localhost:11434";
-    const ollamaKey = process.env.OLLAMA_API_KEY;
-    const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2";
+  // Groq Proxy Endpoint
+  app.post("/api/groq", async (req, res) => {
+    const { messages, model = "llama-3.3-70b-versatile" } = req.body;
+    const groqKey = process.env.GROQ_API_KEY;
 
-    console.log(`[Ollama Proxy] Calling ${ollamaUrl}/api/generate with model ${ollamaModel}`);
+    if (!groqKey) {
+      return res.status(400).json({ error: "GROQ_API_KEY is not set in the environment." });
+    }
+
+    console.log(`[Groq Proxy] Calling Groq API with model ${model}`);
 
     try {
-      const response = await axios.post(`${ollamaUrl}/api/generate`, {
-        model: ollamaModel,
-        prompt: prompt,
+      const response = await axios.post("https://api.groq.com/openai/v1/chat/completions", {
+        model: model,
+        messages: messages,
         stream: false,
       }, {
         headers: {
           "Content-Type": "application/json",
-          ...(ollamaKey ? { "Authorization": `Bearer ${ollamaKey}` } : {}),
+          "Authorization": `Bearer ${groqKey}`,
         },
-        timeout: 30000, // 30s timeout
+        timeout: 30000,
       });
 
-      res.json({ response: response.data.response });
+      res.json(response.data);
     } catch (error: any) {
-      console.error("Ollama Proxy Error:", error.response?.data || error.message);
+      console.error("Groq Proxy Error:", error.response?.data || error.message);
       res.status(500).json({ 
-        error: error.response?.data?.error || error.message || "Failed to connect to Ollama",
-        details: "If you are using a local Ollama instance, ensure it is running and accessible from the cloud environment (e.g., via Ngrok)."
+        error: error.response?.data?.error?.message || error.message || "Failed to connect to Groq",
       });
     }
   });
